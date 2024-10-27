@@ -1,0 +1,145 @@
+/*!
+  * @file  readGasConcentration.ino
+  * @brief Obtain the corresponding gas concentration in the current environment and output the concentration value
+  * @n Experiment method: Connect the sensor communication pin to the main control and burn codes into it. 
+  * @n Communication mode selection, dial switch SEL:0: IIC, 1: UART
+    @n i2c address selection, the default i2c address is 0x74, A1 and A0 are combined into 4 types of IIC addresses
+                | A1 | A0 |
+                | 0  | 0  |    0x74
+                | 0  | 1  |    0x75
+                | 1  | 0  |    0x76
+                | 1  | 1  |    0x77   default i2c address  
+  * @n Experimental phenomenon: You can see the corresponding gas concentration value of the environment at this time by printing on the serial port
+  */
+#include "DFRobot_MultiGasSensor.h"
+#include <Ethernet.h>
+
+//Enabled by default, use IIC communication at this time. Use UART communication when disabled
+#define I2C_COMMUNICATION
+
+
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
+byte ip[] = {172, 17, 136, 88};  // <- change to match your network
+byte server[] = { 172, 17, 136, 12 }; // Touchberry Pi Server
+int tcp_port = 5566;
+EthernetClient client;
+ 
+
+
+unsigned long lastMillis = 0;
+
+
+void setup() {
+
+  Serial.begin(115200);
+    delay(1000);
+      Ethernet.begin(mac, ip);
+
+
+
+}
+
+
+struct pomiar {
+  String GasType;
+  float GasConcentration;
+  float BoardTemperature;
+  bool ValidMeasure;
+};
+
+
+struct pomiar Mierz(uint8_t addr) {
+  Serial.println("Rozpoczynam pomiar");
+
+   struct pomiar w;
+  DFRobot_GAS_I2C gas(&Wire, addr);
+    Serial.println("Ustawilem addres");
+
+  //gas.setTempCompensation(gas.OFF);  
+  gas.changeAcquireMode(gas.PASSIVITY);
+      Serial.println("Ustawilem parametry zaczynam ");
+
+  if (gas.begin() == false)
+  {
+  w.ValidMeasure = false; 
+    Serial.println("G11 NO Deivces !");
+  return w;
+  } 
+  if (gas.dataIsAvailable() == false) 
+  {
+    Serial.println("G11 NO Data !");
+  return w; 
+  }
+      Serial.println("mam dobry pomiar przypisuje zmienne");
+
+w.ValidMeasure = true ;
+w.GasType = gas.queryGasType();
+w.BoardTemperature = gas.readTempC();
+w.GasConcentration = gas.readGasConcentrationPPM();
+    Serial.println("przypisalem zmienne czekam 1s i zwracam");
+
+delay(1000);
+
+return w;
+}
+
+
+
+void drukuj(struct pomiar pom) {
+  Serial.println("mierze");
+
+if (pom.ValidMeasure == true) {
+Serial.println("Pomiar Prawidlowy");
+
+Serial.print("Ambient ");
+Serial.print(pom.GasType);
+Serial.print(" concentration is: ");
+Serial.print(pom.GasConcentration);
+Serial.print(" The board temperature is: ");
+Serial.print(pom.BoardTemperature);
+Serial.println();
+return; 
+}
+return;
+}
+
+ void loop() {
+  while(true) {
+  Serial.println("LS");
+
+//drukuj(Mierz(0x74));
+//drukuj(Mierz(0x75));
+//drukuj(Mierz(0x76));
+//drukuj(Mierz(0x77));
+
+
+
+  if (client.connect(server, tcp_port)) { // Connection to server.js
+    Serial.println("Connected to server.js");
+while(true) {
+  struct pomiar ooo;
+  String resstring;
+  ooo = Mierz(0x74);
+  resstring = ooo.GasType + " - " +  ooo.GasConcentration;
+    client.println(resstring);
+  ooo = Mierz(0x75);
+  resstring = ooo.GasType + " - " +  ooo.GasConcentration;
+    client.println(resstring);
+      ooo = Mierz(0x76);
+  resstring = ooo.GasType + " - " +  ooo.GasConcentration;
+    client.println(resstring);
+}
+  } else {
+    Serial.println("connection failed");
+  }
+
+
+
+    delay(1000);
+
+  Serial.println("LE");
+  }
+};
+
+
+
